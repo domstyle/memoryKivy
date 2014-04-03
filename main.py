@@ -75,6 +75,7 @@ class MemoryButton(Button):
     background_hide = ObjectProperty(None)
     #background_down = ObjectProperty(None)
     background_normal = ObjectProperty(None)
+    image = ObjectProperty(None)
 
     def on_filenameSound(self, instance, value):
         # the first time that the filename is set, we are loading the sample
@@ -84,8 +85,9 @@ class MemoryButton(Button):
     def on_filenameIcon(self, instance, value):
         # the first time that the filename is set, we are loading the sample
         if self.background_normal is None:
-            self.background_normal=value
-            self.background = value
+            self.image = value
+            self.background_normal = value
+            self.background = self.background_down
             self.background_hide = self.background_down
             
     @classmethod
@@ -94,13 +96,18 @@ class MemoryButton(Button):
         cls.playsound = instance.state == 'normal'
 
     def on_press(self):
-        if self.parent.state=='OK' and not self.done: 
+        if self.parent.state=='OK' and not self.done:
+            if self.parent.second != None:
+                # don't allow flipping while wrong pair is still being shown
+                return
+            
             if self.parent.first is None:
                 self.parent.first = self
-                self.background_down,self.background_normal = self.background_normal,self.background_down
+                self.flip()
             else:
                 if self is self.parent.first:
-                    self.parent.first==None
+                    # don't allow un-flip
+                    return
                 elif self.parent.first.filenameIcon == self.filenameIcon:
                     print "youhou!!"
                     self.parent.left+=1
@@ -108,11 +115,10 @@ class MemoryButton(Button):
                         if self.sound.status != 'stop':
                             self.sound.stop()
                         self.sound.play()
-                   
-                    self.background_down,self.background_normal = self.background,self.background
-                    self.parent.first.background_down,self.parent.first.background_normal = self.parent.first.background,self.parent.first.background
-                    self.done=True
-                    self.parent.first.done=True
+
+                    self.show(True)
+                    self.parent.first.show(True)
+
                     self.parent.first = None
                     #check termination
                     if self.parent.left == self.parent.items:
@@ -120,10 +126,26 @@ class MemoryButton(Button):
                         Clock.unschedule(self.parent.elapsedTime)
 
                 else:
+                    self.parent.second = self
                     self.parent.missed += 1
-                    self.parent.first.background_down,self.parent.first.background_normal = self.parent.first.background_normal,self.parent.first.background_down
-                    self.parent.first =None
+                    self.flip()
+                    Clock.schedule_once(self.parent.clearChoices, 1.5)
 
+    def hide(self):
+        self.background_normal = self.background_hide
+        
+    def show(self, permanent=False):
+        self.background_normal = self.image
+        if permanent:
+            self.background_normal = self.image
+            self.done = True
+        
+    def flip(self):
+        if self.background_normal == self.image:
+            self.hide()
+        else:
+            self.show()
+        
 class MemoryLayout(GridLayout):
     left = NumericProperty(0)   #left items to find
     items = NumericProperty(0)  #total number of items
@@ -136,23 +158,33 @@ class MemoryLayout(GridLayout):
         super(MemoryLayout, self).__init__(**kwargs)
         self.state = ""
         self.first=None
+        self.second=None
         self.level=kwargs["level"]
         self.items=kwargs["items"]
         self.countdown= self.level
 
     def toggleButtons(self,state):
         for i in self.children:
-            i.background_down,i.background_normal = i.background_normal,i.background_down
+            i.flip()
+
         self.state=state 
 
     def hideButtons(self):
         for i in self.children:
             i.done=False
-            i.background_down,i.background_normal = i.background_hide,i.background_hide
+            i.hide()
             
     def showButtons(self):
         for i in self.children:
-            i.background_normal = i.background
+            i.show()
+
+    def clearChoices(self, dt=None):
+        if self.first != None:
+            self.first.flip()
+            self.first = None
+        if self.second != None:
+            self.second.flip()
+            self.second = None
             
     def elapsedTime(self,dt):
         self.elapsed += dt
